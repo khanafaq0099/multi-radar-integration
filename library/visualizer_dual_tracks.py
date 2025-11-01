@@ -1,5 +1,5 @@
 """
-Visualizer for Dual Radar System - Track Fusion & Output
+Fuser for Dual Radar System - Track Fusion & Output
 Collects tracks from both radars, fuses them, and outputs to Industrial Visualizer
 """
 
@@ -12,13 +12,14 @@ import numpy as np
 from library.track_fusion import TrackFusion
 
 
-class Visualizer:
-    def __init__(self, run_flag, radar_rd_queue_list, shared_param_dict, **kwargs_CFG):
+class FuseDualRadar:
+    def __init__(self, run_flag, radar_rd_queue_list,vis_queue, shared_param_dict, **kwargs_CFG):
         """
         Initialize visualizer for dual radar track fusion
         """
         self.run_flag = run_flag
         self.radar_rd_queue_list = radar_rd_queue_list
+        self.vis_queue = vis_queue
         self.status = shared_param_dict['proc_status_dict']
         self.status['Module_VIS'] = True
         
@@ -94,6 +95,8 @@ class Visualizer:
                             # Output to Industrial Visualizer
                             self._output_to_industrial_vis(fused_tracks)
                             
+                            self.vis_queue.put(fused_tracks)
+
                             # Print statistics
                             self.total_tracks_processed += len(fused_tracks)
                             self.frame_count += 1

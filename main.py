@@ -6,6 +6,8 @@ from time import sleep
 # Import modified modules
 from library.radar_reader_dual_1010 import RadarReader
 from library.sync_monitor import SyncMonitor
+from library.visualizer import Visualizer
+from library.visualizer_dual_tracks import FuseDualRadar
 
 # Choose visualizer type
 USE_MATPLOTLIB = False  # Set to False to use UDP output
@@ -27,19 +29,25 @@ def radar_proc_method(_run_flag, _radar_rd_queue, _shared_param_dict, **_kwargs_
         **_kwargs_CFG
     )
     radar.run()
-
-
-def vis_proc_method(_run_flag, _radar_rd_queue_list, _shared_param_dict, **_kwargs_CFG):
+def fuse_vis_dualradar(_run_flag, _radar_rd_queue_list, vis_queue, _shared_param_dict, **_kwargs_CFG):
+    """Fuser process - fuses tracks and outputs to Industrial Visualizer"""
+    fuser = FuseDualRadar(
+        run_flag=_run_flag,
+        radar_rd_queue_list=_radar_rd_queue_list,
+        vis_queue=vis_queue,
+        shared_param_dict=_shared_param_dict,
+        **_kwargs_CFG
+    )
+    fuser.run()
+def vis_proc_method(_run_flag, vis_queue, _shared_param_dict, **_kwargs_CFG):
     """Visualization process - fuses tracks and outputs to Industrial Visualizer"""
     vis = Visualizer(
         run_flag=_run_flag,
-        radar_rd_queue_list=_radar_rd_queue_list,
+        vis_rd_queue=vis_queue,
         shared_param_dict=_shared_param_dict,
         **_kwargs_CFG
     )
     vis.run()
-
-
 def monitor_proc_method(_run_flag, _radar_rd_queue_list, _shared_param_dict, **_kwargs_CFG):
     """Monitor process - syncs queues between radars"""
     sync = SyncMonitor(
@@ -65,10 +73,7 @@ if __name__ == '__main__':
     shared_param_dict = {
         'mansave_flag': Manager().Value('c', None),
         'autosave_flag': Manager().Value('b', False),
-        'compress_video_file': Manager().Value('c', None),
-        'email_image': Manager().Value('f', None),
-        'proc_status_dict': Manager().dict(),
-        'save_queue': Manager().Queue(maxsize=2000)
+        'proc_status_dict': Manager().dict()
     }
     
     # Generate shared queues and processes for each radar
@@ -78,14 +83,15 @@ if __name__ == '__main__':
     print("\nInitializing radars...")
     for i, RADAR_CFG in enumerate(RADAR_CFG_LIST):
         
-        radar_rd_queue = Manager().Queue()
+        radar_rd_queue = Manager().Queue() # Queue for radar data has frames dict types
+        vis_queue      = Manager().Queue()
+
         radar_rd_queue_list.append(radar_rd_queue)
         # Create config for this radar
         kwargs_CFG = {
             'RADAR_CFG': RADAR_CFG,
             'FRAME_EARLY_PROCESSOR_CFG': FRAME_EARLY_PROCESSOR_CFG
         }
-        
         # Create process for this radar
         radar_proc = Process(
             target=radar_proc_method,
@@ -99,8 +105,6 @@ if __name__ == '__main__':
     kwargs_CFG = {
         'VISUALIZER_CFG': VISUALIZER_CFG,
         'RADAR_CFG_LIST': RADAR_CFG_LIST,
-        'MANSAVE_ENABLE': MANSAVE_ENABLE,
-        'AUTOSAVE_ENABLE': AUTOSAVE_ENABLE,
         'FRAME_POST_PROCESSOR_CFG': FRAME_POST_PROCESSOR_CFG,
         'SYNC_MONITOR_CFG': SYNC_MONITOR_CFG,
         'TRACK_FUSION_CFG': TRACK_FUSION_CFG,
@@ -111,11 +115,21 @@ if __name__ == '__main__':
     print("\nInitializing visualizer...")
     vis_proc = Process(
         target=vis_proc_method,
-        args=(run_flag, radar_rd_queue_list, shared_param_dict),
+        args=(run_flag, vis_queue, shared_param_dict),
         kwargs=kwargs_CFG,
         name='Module_VIS'
     )
     proc_list.append(vis_proc)
+    
+    # Create Fuser process (fuses tracks and outputs)
+    print("\nInitializing Fuser...")
+    fuser_proc = FuseDualRadar(
+        target=fuse_vis_dualradar,
+        args=(run_flag, radar_rd_queue_list, vis_queue, shared_param_dict),
+        kwargs=kwargs_CFG,
+        name='Module_VIS'
+    )
+    proc_list.append(fuser_proc)
     
     # # Create monitor process (syncs queues)
     # print("Initializing sync monitor...")
@@ -130,10 +144,6 @@ if __name__ == '__main__':
     # # Initialize process status
     for proc in proc_list:
         shared_param_dict['proc_status_dict'][proc.name] = False
-    
-    
-    
-    
     
     # Start all processes
     print("\n" + "="*70)
