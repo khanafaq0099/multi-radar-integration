@@ -15,7 +15,7 @@ USE_MATPLOTLIB = False  # Set to False to use UDP output
 if USE_MATPLOTLIB:
     from library.visualizer_matplotlib_3d import MatplotlibVisualizer as Visualizer
 else:
-    from library.visualizer_dual_tracks import Visualizer
+    from library.visualizer_dual_tracks import FuseDualRadar
 
 # Import configuration
 from cfg.config_demo_dual_radar import *
@@ -69,12 +69,13 @@ if __name__ == '__main__':
     # Generate shared variables between processes
     run_flag = Manager().Value('b', True)
     
-    # Shared parameter dictionary
-    shared_param_dict = {
-        'mansave_flag': Manager().Value('c', None),
-        'autosave_flag': Manager().Value('b', False),
-        'proc_status_dict': Manager().dict()
-    }
+    shared_param_dict = {'mansave_flag'       : Manager().Value('c', None),  # set as None, 'image' or 'video', only triggered at the end of recording
+                         'autosave_flag'      : Manager().Value('b', False),  # set as False, True or False, constantly high from the beginning to the end of recording
+                         'compress_video_file': Manager().Value('c', None),  # the record video file waiting to be compressed
+                         'email_image'        : Manager().Value('f', None),  # for image info from save_center to email_notifier module
+                         'proc_status_dict'   : Manager().dict(),  # for process status
+                         'save_queue'         : Manager().Queue(maxsize=2000)
+                         }
     
     # Generate shared queues and processes for each radar
     radar_rd_queue_list = []
@@ -102,13 +103,17 @@ if __name__ == '__main__':
         proc_list.append(radar_proc)
     
     # # Configuration for visualizer and monitor
-    kwargs_CFG = {
-        'VISUALIZER_CFG': VISUALIZER_CFG,
-        'RADAR_CFG_LIST': RADAR_CFG_LIST,
-        'FRAME_POST_PROCESSOR_CFG': FRAME_POST_PROCESSOR_CFG,
-        'SYNC_MONITOR_CFG': SYNC_MONITOR_CFG,
-        'TRACK_FUSION_CFG': TRACK_FUSION_CFG,
-        'INDUSTRIAL_VIS_CFG': INDUSTRIAL_VIS_CFG
+    kwargs_CFG = {'VISUALIZER_CFG'          : VISUALIZER_CFG,
+                  'RADAR_CFG_LIST'          : RADAR_CFG_LIST,
+                  'MANSAVE_ENABLE'          : MANSAVE_ENABLE,
+                  'AUTOSAVE_ENABLE'         : AUTOSAVE_ENABLE,
+                  'FRAME_POST_PROCESSOR_CFG': FRAME_POST_PROCESSOR_CFG,
+                  'DBSCAN_GENERATOR_CFG'    : DBSCAN_GENERATOR_CFG,
+                  'BGNOISE_FILTER_CFG'      : BGNOISE_FILTER_CFG,
+                  'HUMAN_TRACKING_CFG'      : HUMAN_TRACKING_CFG,
+                  'HUMAN_OBJECT_CFG'        : HUMAN_OBJECT_CFG,
+                  'SAVE_CENTER_CFG'         : SAVE_CENTER_CFG,
+                  'SYNC_MONITOR_CFG'        : SYNC_MONITOR_CFG
     }
     
     # Create visualizer process (fuses tracks and outputs)
@@ -123,11 +128,11 @@ if __name__ == '__main__':
     
     # Create Fuser process (fuses tracks and outputs)
     print("\nInitializing Fuser...")
-    fuser_proc = FuseDualRadar(
+    fuser_proc = Process(
         target=fuse_vis_dualradar,
         args=(run_flag, radar_rd_queue_list, vis_queue, shared_param_dict),
         kwargs=kwargs_CFG,
-        name='Module_VIS'
+        name='Module_FUS'
     )
     proc_list.append(fuser_proc)
     

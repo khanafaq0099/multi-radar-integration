@@ -10,11 +10,9 @@ from multiprocessing import Manager
 
 import matplotlib
 import numpy as np
-import winsound
 from matplotlib import pyplot as plt
 from matplotlib.ticker import LinearLocator
 
-from library import SNRV_filter, np_filter
 
 RP_colormap = ['C5', 'C7', 'C8']  # the colormap for radar raw points
 SNR_colormap = ['lavender', 'thistle', 'violet', 'darkorchid', 'indigo']  # the colormap for radar energy strength
@@ -23,6 +21,7 @@ OS_colormap = ['grey', 'green', 'gold', 'red']  # the colormap for object status
 
 class Visualizer:
     def __init__(self, run_flag, vis_rd_queue, shared_param_dict, **kwargs_CFG):
+        print("------------------------------Initializing Visualizer...")
         """
         get shared values and queues
         """
@@ -47,7 +46,7 @@ class Visualizer:
         self.VIS_xlim = VIS_CFG['VIS_xlim']
         self.VIS_ylim = VIS_CFG['VIS_ylim']
         self.VIS_zlim = VIS_CFG['VIS_zlim']
-
+        self.text_list = []
         self.auto_inactive_skip_frame = VIS_CFG['auto_inactive_skip_frame']
 
         """ other configs """
@@ -108,7 +107,7 @@ class Visualizer:
                 ax1.set_ylabel('y')
                 ax1.set_zlabel('z')
                 ax1.set_title('Radar')
-                spin += 0.04
+                # spin += 0.04
                 ax1.view_init(ax1.elev - 0.5 * math.sin(spin), ax1.azim - 0.3 * math.sin(1.5 * spin))  # spin the view angle
                 # update the canvas
                 self._update_canvas(ax1)
@@ -116,41 +115,89 @@ class Visualizer:
             while self.run_flag.value:
                 for q in self.radar_rd_queue_list:
                     _ = q.get(block=True, timeout=5)
+    
+    
+
+    #     # Draw fused tracks
+    #     if fused_tracks and len(fused_tracks) > 0:
+    #         for track in fused_tracks:
+    #             x, y, z = track['posX'], track['posY'], track['posZ']
+    #             ax1.scatter(x, y, z, c='blue', marker='o', s=60)
+    #             ax1.text(x, y, z + 0.1, f"T{track['global_tid']}", color='black', fontsize=8)
+    #     else:
+    #         self._log("No valid tracks to display.")
+            
+    #     plt.draw()
+    #     plt.pause(0.001)
     def _update_canvas(self, ax1):
         """
-        Update 3D visualization with fused tracks (TLV 1010 output)
+        Efficient real-time 3D visualization of fused tracks (TLV 1010 output)
         """
-        # Try to get fused data from queue
+
+        # Try to get fused data (non-blocking, short timeout for smooth refresh)
         try:
-            fused_tracks = self.vis_rd_queue.get(block=True, timeout=2)
+            fused_tracks = self.vis_rd_queue.get(timeout=0.05)
         except queue.Empty:
-            self._log('No fused data available.')
+            fused_tracks = []
+
+        # If first time setup — initialize scatter and radar markers
+        if not hasattr(self, 'initialized'):
+            ax1.set_xlim(self.VIS_xlim[0], self.VIS_xlim[1])
+            ax1.set_ylim(self.VIS_ylim[0], self.VIS_ylim[1])
+            ax1.set_zlim(self.VIS_zlim[0], self.VIS_zlim[1])
+            ax1.set_xlabel('X (m)')
+            ax1.set_ylabel('Y (m)')
+            ax1.set_zlabel('Z (m)')
+            ax1.set_title('3D People Tracking - Fused Tracks')
+
+            # Plot radar positions once
+            for RDR_CFG in self.RDR_CFG_LIST:
+                ax1.scatter(
+                    [RDR_CFG['pos_offset'][0]],
+                    [RDR_CFG['pos_offset'][1]],
+                    [RDR_CFG['pos_offset'][2]],
+                    marker='^', color='darkred', s=80
+                )
+
+            # Empty scatter plot for fused tracks
+            self.scat = ax1.scatter([], [], [], c='blue', marker='o', s=60)
+            self.text_elems = []  # store text labels
+            self.initialized = True
+
+            plt.draw()
+            plt.pause(0.001)
             return
 
-        # Clear and redraw axes
-        ax1.set_xlim(self.VIS_xlim[0], self.VIS_xlim[1])
-        ax1.set_ylim(self.VIS_ylim[0], self.VIS_ylim[1])
-        ax1.set_zlim(self.VIS_zlim[0], self.VIS_zlim[1])
-        ax1.set_xlabel('X (m)')
-        ax1.set_ylabel('Y (m)')
-        ax1.set_zlabel('Z (m)')
-        ax1.set_title('3D People Tracking - Fused Tracks')
-
-        # Draw radar positions
-        for RDR_CFG in self.RDR_CFG_LIST:
-            self._plot(ax1, [RDR_CFG['pos_offset'][0]],
-                            [RDR_CFG['pos_offset'][1]],
-                            [RDR_CFG['pos_offset'][2]],
-                            marker='^', color='darkred')
-
-        # Draw fused tracks
+        # If we have fused tracks, update scatter positions
         if fused_tracks and len(fused_tracks) > 0:
-            for track in fused_tracks:
-                x, y, z = track['posX'], track['posY'], track['posZ']
-                ax1.scatter(x, y, z, c='blue', marker='o', s=60)
-                ax1.text(x, y, z + 0.1, f"T{track['global_tid']}", color='black', fontsize=8)
+            xs = [t['posX'] for t in fused_tracks]
+            ys = [t['posY'] for t in fused_tracks]
+            zs = [t['posZ'] for t in fused_tracks]
+
+            # Update scatter points efficiently
+            self.scat._offsets3d = (xs, ys, zs, c='blue', marker='o')
+
+            # Clear old labels and draw new ones
+            for txt in self.text_list:
+                try:
+                    txt.remove()
+                except Exception:
+                    pass
+            self.text_list.clear()
+
+            self.text_elems = []
+            for i, track in enumerate(fused_tracks):
+                self.text_elems.append(
+                    ax1.text(xs[i], ys[i], zs[i] + 0.1,
+                            f"T{track['global_tid']}", color='black', fontsize=8)
+                )
         else:
-            self._log("No valid tracks to display.")
+            # No data received recently
+            pass
+
+        # Refresh visualization (non-blocking)
+        plt.draw()
+        plt.pause(0.001)
 
 
     def _plot(self, ax, x, y, z, fmt='', **kwargs):

@@ -13,7 +13,7 @@ from library.track_fusion import TrackFusion
 
 
 class FuseDualRadar:
-    def __init__(self, run_flag, radar_rd_queue_list,vis_queue, shared_param_dict, **kwargs_CFG):
+    def __init__(self, run_flag, radar_rd_queue_list, vis_queue, shared_param_dict, **kwargs_CFG):
         """
         Initialize visualizer for dual radar track fusion
         """
