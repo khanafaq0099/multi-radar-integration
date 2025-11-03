@@ -116,6 +116,16 @@ if __name__ == '__main__':
                   'SYNC_MONITOR_CFG'        : SYNC_MONITOR_CFG
     }
     
+    # Create monitor process (syncs queues)
+    # print("Initializing sync monitor...")
+    # monitor_proc = Process(
+    #     target=monitor_proc_method,
+    #     args=(run_flag, radar_rd_queue_list, shared_param_dict),
+    #     kwargs=kwargs_CFG,
+    #     name='Module_SCM'
+    # )
+    # proc_list.append(monitor_proc)
+    
     # Create visualizer process (fuses tracks and outputs)
     print("\nInitializing visualizer...")
     vis_proc = Process(
@@ -126,25 +136,9 @@ if __name__ == '__main__':
     )
     proc_list.append(vis_proc)
     
-    # Create Fuser process (fuses tracks and outputs)
-    print("\nInitializing Fuser...")
-    fuser_proc = Process(
-        target=fuse_vis_dualradar,
-        args=(run_flag, radar_rd_queue_list, vis_queue, shared_param_dict),
-        kwargs=kwargs_CFG,
-        name='Module_FUS'
-    )
-    proc_list.append(fuser_proc)
+
     
-    # # Create monitor process (syncs queues)
-    # print("Initializing sync monitor...")
-    # monitor_proc = Process(
-    #     target=monitor_proc_method,
-    #     args=(run_flag, radar_rd_queue_list, shared_param_dict),
-    #     kwargs=kwargs_CFG,
-    #     name='Module_SCM'
-    # )
-    # proc_list.append(monitor_proc)
+
     
     # # Initialize process status
     for proc in proc_list:

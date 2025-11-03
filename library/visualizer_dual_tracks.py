@@ -31,40 +31,16 @@ class FuseDualRadar:
         # Track fusion
         self.track_fusion = TrackFusion(**kwargs_CFG)
         
-        # Industrial Visualizer connection
-        self.socket_conn = None
-        if self.ind_vis_cfg.get('enable', False):
-            self._init_socket_connection()
-        
         # Statistics
         self.frame_count = 0
         self.total_tracks_processed = 0
         
         self._log('Visualizer initialized for dual radar')
 
-    def _init_socket_connection(self):
-        """Initialize UDP/TCP socket for Industrial Visualizer"""
-        try:
-            protocol = self.ind_vis_cfg.get('output_protocol', 'udp')
-            ip = self.ind_vis_cfg.get('ip_address', '127.0.0.1')
-            port = self.ind_vis_cfg.get('port', 5000)
-            
-            if protocol == 'udp':
-                self.socket_conn = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                self.socket_address = (ip, port)
-                self._log(f'UDP socket created for {ip}:{port}')
-            elif protocol == 'tcp':
-                self.socket_conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.socket_conn.connect((ip, port))
-                self._log(f'TCP connected to {ip}:{port}')
-            
-        except Exception as e:
-            self._log(f'Socket connection error: {e}')
-            self.socket_conn = None
 
     def run(self):
         """
-        Main loop - collect frames from both radars, fuse tracks, and output
+        Main loop - collect frames from both radars, fuse tracks, and Send to Visualizer Queue
         """
         self._log('Starting visualization loop...')
         
@@ -233,12 +209,7 @@ class FuseDualRadar:
 
     def __del__(self):
         """Cleanup on exit"""
-        try:
-            if self.socket_conn:
-                self.socket_conn.close()
-        except:
-            pass
-        
+    
         self._log(f'Closed. Frames: {self.frame_count}, '
                  f'Total tracks: {self.total_tracks_processed}')
         self._log(f"Timestamp: {datetime.now().strftime('%Y-%m-%d_%H:%M:%S')}")
@@ -277,7 +248,7 @@ if __name__ == '__main__':
         }
     }
     
-    vis = Visualizer(run_flag, [queue1, queue2], shared_dict, **kwargs_CFG)
+    # vis = Visualizer(run_flag, [queue1, queue2], shared_dict, **kwargs_CFG)
     
     # Simulate some test data
     test_frame1 = {
