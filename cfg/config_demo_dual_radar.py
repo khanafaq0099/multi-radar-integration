@@ -18,22 +18,21 @@ AUTOSAVE_PERIOD = 600
 # DUAL RADAR CONFIGURATION
 # =============================================================================
 RADAR_CFG_LIST = [
-    # Radar 1 - Left side (example placement)
     {
         'name'          : 'IWR6843_Radar1',
-        'cfg_port_name' : '/dev/ttyUSB0',        # ⚠️ UPDATE: Your first radar's config port
-        'data_port_name': '/dev/ttyUSB1',        # ⚠️ UPDATE: Your first radar's data port
+        'cfg_port_name' : '/dev/ttyUSB0',
+        'data_port_name': '/dev/ttyUSB1',
         'cfg_file_name' : './cfg/AOP_6m_default.cfg',
         
         # Coordinate transformation for Radar 1
-        'pos_offset'    : (0, 0, 2.5),   # ⚠️ UPDATE: (x, y, z) position in meters
+        'pos_offset'    : (0, 0, 2.5),      # (x, y, z) position in meters
         'facing_angle'  : {
-            'angle': (-20, 0, 0),          # ⚠️ UPDATE: (pitch, yaw, roll) in degrees
-            'sequence': 'zyx'            # Rotation order
+            'angle': (-20, 0, 0),           # (pitch, yaw, roll) in degrees
+            'sequence': 'zyx'               # Rotation order
         },
         
         # Boundary limits (from radar's local view, before transformation)
-        'xlim'          : (-2, 2),       # Left-right limit
+        'xlim'          : (-2, 2),         # Left-right limit
         'ylim'          : (0.2, 4.1),      # Depth limit (front of radar)
         'zlim'          : (0, 3.7),        # Height limit
         

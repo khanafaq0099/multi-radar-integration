@@ -51,12 +51,15 @@ class TrackFusion:
         all_tracks = []
         for frame in radar_frames:
             radar_name = frame['radar_name']
-            for track in frame['tracks']:
+            for track in frame['tracks']: # Each track is list of dicts -> transformed tracks
                 track_copy = track.copy()
                 track_copy['radar_name'] = radar_name
                 track_copy['timestamp'] = frame['timestamp']
                 all_tracks.append(track_copy)
-        
+            #     all_tracks = [
+            #     {'tid': 5, 'posX': 1.0, 'posY': 2.0, 'posZ': 1.5, 'radar_name': 'Radar1'},
+            #     {'tid': 7, 'posX': 3.0, 'posY': 4.0, 'posZ': 1.2, 'radar_name': 'Radar1'},
+            #     {'tid': 3, 'posX': 1.1, 'posY': 2.1, 'posZ': 1.4, 'radar_name': 'Radar2'}]
         if not all_tracks:
             return []
         
