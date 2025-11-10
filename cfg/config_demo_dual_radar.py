@@ -1,13 +1,13 @@
 """
-Config file for Dual IWR6843AOP 3D People Tracking
-Modified for 2 radars with TLV 1010 output only
+Config file for Dual IWR6843AOP with SERIAL OUTPUT to TI Industrial Visualizer
+Uses virtual serial port for communication
 """
 
 # global save parameters
 EXPERIMENT_NAME = 'dual_radar_tracking'
-RADAR_FPS = 20  # 20 frames per second for People Tracking demo
+RADAR_FPS = 20  # 20 frames per second
 
-# Save settings (can disable if only live viewing)
+# Save settings
 MANSAVE_ENABLE = False
 MANSAVE_PERIOD = 30
 
@@ -20,94 +20,67 @@ AUTOSAVE_PERIOD = 600
 RADAR_CFG_LIST = [
     {
         'name'          : 'IWR6843_Radar1',
-        'cfg_port_name' : '/dev/ttyUSB0',
-        'data_port_name': '/dev/ttyUSB1',
+        'cfg_port_name' : '/dev/ttyUSB0',      # ⚠️ UPDATE: Your radar's config port
+        'data_port_name': '/dev/ttyUSB1',      # ⚠️ UPDATE: Your radar's data port
         'cfg_file_name' : './cfg/AOP_6m_default.cfg',
         
-        # Coordinate transformation for Radar 1
-        'pos_offset'    : (0, 0, 2.5),      # (x, y, z) position in meters
+        # Coordinate transformation
+        'pos_offset'    : (0, 0, 2.5),         # (x, y, z) in meters
         'facing_angle'  : {
-            'angle': (-20, 0, 0),           # (pitch, yaw, roll) in degrees
-            'sequence': 'zyx'               # Rotation order
+            'angle': (-20, 0, 0),              # (pitch, yaw, roll) in degrees
+            'sequence': 'zyx'
         },
         
-        # Boundary limits (from radar's local view, before transformation)
-        'xlim'          : (-2, 2),         # Left-right limit
-        'ylim'          : (0.2, 4.1),      # Depth limit (front of radar)
-        'zlim'          : (0, 3.7),        # Height limit
+        # Boundary limits
+        'xlim'          : (-2, 2),
+        'ylim'          : (0.2, 4.1),
+        'zlim'          : (0, 3.7),
         
-        # Energy threshold (not used for 1010, but keep for compatibility)
         'ES_threshold'  : {'range': (0, None), 'speed_none_0_exception': False},
     },
     
-    # Radar 2 - Right side (example placement)
+    # Radar 2 - Uncomment when ready
     # {
     #     'name'          : 'IWR6843_Radar2',
-    #     'cfg_port_name' : 'COM5',        # ⚠️ UPDATE: Your second radar's config port
-    #     'data_port_name': 'COM6',        # ⚠️ UPDATE: Your second radar's data port
-    #     'cfg_file_name' : './cfg/IWR6843_3D_20fps_people_tracking.cfg',
-        
-    #     # Coordinate transformation for Radar 2
-    #     'pos_offset'    : (4, 0, 2.5),   # ⚠️ UPDATE: (x, y, z) position in meters
-    #     'facing_angle'  : {
-    #         'angle': (0, -45, 0),        # ⚠️ UPDATE: Example: facing -45° (towards left)
-    #         'sequence': 'zyx'
-    #     },
-        
-    #     # Boundary limits (from radar's local view, before transformation)
+    #     'cfg_port_name' : 'COM5',
+    #     'data_port_name': 'COM6',
+    #     'cfg_file_name' : './cfg/IWR6843_3D_20fps.cfg',
+    #     'pos_offset'    : (4, 0, 2.5),
+    #     'facing_angle'  : {'angle': (0, -45, 0), 'sequence': 'zyx'},
     #     'xlim'          : (-3, 3),
     #     'ylim'          : (0.5, 8),
     #     'zlim'          : (0, 3),
-        
     #     'ES_threshold'  : {'range': (0, None), 'speed_none_0_exception': False},
     # },
 ]
 
 # =============================================================================
-# SYNC MONITOR CONFIG
+# TI INDUSTRIAL VISUALIZER - SERIAL OUTPUT CONFIG
 # =============================================================================
-SYNC_MONITOR_CFG = {
-    'rd_qsize_warning': 5,   # Warning when queue size exceeds this
-    'sc_qsize_warning': 20,
+INDUSTRIAL_VIS_CFG = {
+    'enable'          : True,
+    
+    # SERIAL PORT SETTINGS (not UDP!)
+    'serial_port'     : '/tmp/ttyV0',              # ⚠️ UPDATE: Virtual COM port (WRITE side)
+    'baud_rate'       : 921600,               # Standard TI baud rate (921600)
+    
+    # Notes:
+    # - Create virtual serial port pair (e.g., COM20 <-> COM21)
+    # - Your code writes to COM20
+    # - Industrial Visualizer reads from COM21
 }
 
 # =============================================================================
-# FRAME EARLY PROCESSOR CONFIG (Per Radar)
-# =============================================================================
-FRAME_EARLY_PROCESSOR_CFG = {
-    'FEP_frame_deque_length': 1,  # For 1010, we don't accumulate frames (tracks are already processed)
-}
-
-# =============================================================================
-# VISUALIZER CONFIG (For Industrial Visualizer output)
+# VISUALIZER CONFIG
 # =============================================================================
 VISUALIZER_CFG = {
     'dimension'               : '3D',
-    
-    # Global coordinate limits (after merging both radars)
-    'VIS_xlim'                : (-2, 2),    # ⚠️ UPDATE: Based on your room size
+    'VIS_xlim'                : (-2, 2),
     'VIS_ylim'                : (0.3, 4),
     'VIS_zlim'                : (0, 3.7),
-    
-    'auto_inactive_skip_frame': 0,  # No skipping for tracking data
-    
-    # Output settings
-    'output_format'           : 'industrial_visualizer',  # or 'tlv', 'json'
-    'output_port'             : 5000,  # Port for Industrial Visualizer
-}
-
-# =============================================================================
-# FRAME POST PROCESSOR CONFIG (Global fusion)
-# =============================================================================
-FRAME_POST_PROCESSOR_CFG = {
-    # Global coordinate limits (merged view)
-    'FPP_global_xlim' : (-5, 5),
-    'FPP_global_ylim' : (0, 10),
-    'FPP_global_zlim' : (0.1, 3),
-    
-    # Track fusion parameters
-    'track_fusion_distance_threshold': 0.5,  # meters - merge tracks closer than this
-    'track_id_offset'                : 1000, # Offset for radar 2 track IDs to avoid conflicts
+    'auto_inactive_skip_frame': 0,
+    'output_format'           : 'serial',
+    'output_port'             : 5000,
 }
 
 # =============================================================================
@@ -115,31 +88,35 @@ FRAME_POST_PROCESSOR_CFG = {
 # =============================================================================
 TRACK_FUSION_CFG = {
     'enable'                  : True,
-    'distance_threshold'      : 0.5,   # meters - merge tracks within this distance
-    'confidence_weight'       : 0.7,   # Weight for track confidence in fusion
-    'velocity_weight'         : 0.3,   # Weight for velocity similarity
-    'fusion_method'           : 'weighted_average',  # or 'kalman'
+    'distance_threshold'      : 0.5,          # meters
+    'confidence_weight'       : 0.7,
+    'velocity_weight'         : 0.3,
+    'fusion_method'           : 'weighted_average',
 }
 
 # =============================================================================
-# INDUSTRIAL VISUALIZER OUTPUT CONFIG
+# OTHER CONFIGS (keep for compatibility)
 # =============================================================================
-INDUSTRIAL_VIS_CFG = {
-    'enable'          : True,
-    'output_protocol' : 'udp',     # 'udp' or 'tcp'
-    'ip_address'      : '127.0.0.1',
-    'port'            : 5000,
-    'frame_format'    : 'tlv',     # Keep TLV format for Industrial Visualizer
-    'include_tracks'  : True,
-    'include_points'  : False,     # We only have tracks (1010), no point cloud
+SYNC_MONITOR_CFG = {
+    'rd_qsize_warning': 5,
+    'sc_qsize_warning': 20,
 }
 
-# =============================================================================
-# UNUSED CONFIGS (Keep for compatibility)
-# =============================================================================
-DBSCAN_GENERATOR_CFG = {'Default': {}}  # Not used for 1010
+FRAME_EARLY_PROCESSOR_CFG = {
+    'FEP_frame_deque_length': 1,
+}
+
+FRAME_POST_PROCESSOR_CFG = {
+    'FPP_global_xlim' : (-5, 5),
+    'FPP_global_ylim' : (0, 10),
+    'FPP_global_zlim' : (0.1, 3),
+    'track_fusion_distance_threshold': 0.5,
+    'track_id_offset'                : 1000,
+}
+
+DBSCAN_GENERATOR_CFG = {'Default': {}}
 BGNOISE_FILTER_CFG = {'BGN_enable': False}
-HUMAN_TRACKING_CFG = {'TRK_enable': False}  # Tracking done on-chip
+HUMAN_TRACKING_CFG = {'TRK_enable': False}
 HUMAN_OBJECT_CFG = {}
 SAVE_CENTER_CFG = {
     'file_save_dir'      : f'./data/{EXPERIMENT_NAME}/',
