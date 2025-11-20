@@ -1,0 +1,9 @@
+positions = np.array([[t['posX'], t['posY'], t['posZ']] for t in tracks])
+fused_pos = np.average(positions, axis=0, weights=weights)
+
+    Calculation:
+        positions =    [[1.0, 2.0, 1.5],
+                       [1.1, 2.1, 1.4]]
+
+        fused_pos = 0.529 * [1.0, 2.0, 1.5] + 0.471 * [1.1, 2.1, 1.4]
+                  = [1.047, 2.047, 1.447]

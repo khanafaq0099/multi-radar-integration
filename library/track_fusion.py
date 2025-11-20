@@ -32,64 +32,82 @@ class TrackFusion:
 
     def fuse_tracks(self, radar_frames):
         """
-        Fuse tracks from multiple radar frames
-        
-        Args:
-            radar_frames: List of frame dicts from different radars
-                         Each dict has: {'radar_name', 'tracks', 'timestamp', ...}
-        
-        Returns:
-            fused_tracks: List of fused track dictionaries
+        Fuse tracks from multiple radar frames.
         """
         if not radar_frames:
             return []
-        
-        # Clean up old track IDs
+
+        # Cleanup old track IDs (aging or removing expired ones)
         self._cleanup_old_tids()
-        
-        # Extract all tracks with radar info
+
+        # Extract all tracks from all radars
         all_tracks = []
         for frame in radar_frames:
             radar_name = frame['radar_name']
-            for track in frame['tracks']: # Each track is list of dicts -> transformed tracks
+            num_tracks = len(frame['tracks'])
+            print(f"[DEBUG][fuse_tracks] Radar '{radar_name}' has {num_tracks} tracks")
+
+            for track in frame['tracks']:
                 track_copy = track.copy()
                 track_copy['radar_name'] = radar_name
                 track_copy['timestamp'] = frame['timestamp']
                 all_tracks.append(track_copy)
-            #     all_tracks = [
-            #     {'tid': 5, 'posX': 1.0, 'posY': 2.0, 'posZ': 1.5, 'radar_name': 'Radar1'},
-            #     {'tid': 7, 'posX': 3.0, 'posY': 4.0, 'posZ': 1.2, 'radar_name': 'Radar1'},
-            #     {'tid': 3, 'posX': 1.1, 'posY': 2.1, 'posZ': 1.4, 'radar_name': 'Radar2'}]
+
         if not all_tracks:
+            print("[DEBUG][fuse_tracks] No tracks found in any radar frame — returning []")
             return []
-        
-        # Build distance matrix between all tracks
+
+        # Print raw track data
+        print("[DEBUG][fuse_tracks] Listing all extracted tracks:")
+        for t in all_tracks:
+            print(f"   - {t['radar_name']}: TID={t['tid']} "
+                f"Pos=({t['posX']:.2f}, {t['posY']:.2f}, {t['posZ']:.2f})")
+
+        # Compute pairwise distance matrix
         positions = np.array([[t['posX'], t['posY'], t['posZ']] for t in all_tracks])
         dist_matrix = cdist(positions, positions, metric='euclidean')
-        
-        # Find tracks to merge (within distance threshold)
+
+        print("\n[DEBUG][fuse_tracks] Position array:")
+        print(positions)
+        print("\n[DEBUG][fuse_tracks] Distance matrix:")
+        np.set_printoptions(precision=2, suppress=True)
+        print(dist_matrix)
+
+        # Merge nearby tracks
         fused_tracks = []
         merged_indices = set()
-        
+
         for i, track_i in enumerate(all_tracks):
             if i in merged_indices:
+                print(f"[DEBUG][fuse_tracks] Track index {i} already merged — skipping")
                 continue
-            
-            # Find all tracks close to track_i
+
             close_tracks_idx = np.where(dist_matrix[i, :] < self.distance_threshold)[0]
             close_tracks = [all_tracks[idx] for idx in close_tracks_idx if idx not in merged_indices]
-            
+
+            print(f"\n[DEBUG][fuse_tracks] Track[{i}] ({track_i['radar_name']}, TID={track_i['tid']})")
+            print(f"  -> Close track indices: {close_tracks_idx}")
+            print(f"  -> Number of close tracks: {len(close_tracks)}")
+
             if len(close_tracks) > 1:
-                # Multiple tracks from different radars - fuse them
+                print(f"  [DEBUG][fuse_tracks] → Multiple ({len(close_tracks)}) nearby tracks found, fusing...")
                 fused_track = self._merge_multiple_tracks(close_tracks)
                 fused_tracks.append(fused_track)
                 merged_indices.update(close_tracks_idx)
+                print(f"  [DEBUG][fuse_tracks] → Created fused track: "
+                    f"GlobalTID={fused_track['global_tid']} "
+                    f"Pos=({fused_track['posX']:.2f}, {fused_track['posY']:.2f}, {fused_track['posZ']:.2f}), "
+                    f"Radars={fused_track['source_radars']}")
             else:
-                # Single track - just assign global ID
+                print("  [DEBUG][fuse_tracks] → Single track (no nearby matches). Assigning new global ID...")
                 fused_track = self._assign_global_tid(track_i)
                 fused_tracks.append(fused_track)
                 merged_indices.add(i)
-        
+                print(f"  [DEBUG][fuse_tracks] → Assigned GlobalTID={fused_track['global_tid']} "
+                    f"for radar {track_i['radar_name']}")
+
+        print(f"\n[DEBUG][fuse_tracks] Merging complete — total fused tracks: {len(fused_tracks)}")
+        print("[DEBUG][fuse_tracks] ====================================================\n")
         return fused_tracks
 
     def _merge_multiple_tracks(self, tracks):
@@ -296,4 +314,4 @@ if __name__ == '__main__':
         print(f"  Global TID {track['global_tid']}: "
               f"Pos=({track['posX']:.2f}, {track['posY']:.2f}, {track['posZ']:.2f}), "
               f"Conf={track['confidence']:.2f}, "
-              f"Sources={track['source_radars']}")
+              f"Sources={track['source_radars']}, ", f"num_radars_detected={track['num_radars_detected']}")

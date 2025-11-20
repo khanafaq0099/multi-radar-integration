@@ -26,7 +26,6 @@ class FuseDualRadar:
         # Config
         self.vis_cfg = kwargs_CFG['VISUALIZER_CFG']
         self.radar_cfg_list = kwargs_CFG['RADAR_CFG_LIST']
-        self.ind_vis_cfg = kwargs_CFG.get('INDUSTRIAL_VIS_CFG', {})
         
         # Track fusion
         self.track_fusion = TrackFusion(**kwargs_CFG)
@@ -40,7 +39,7 @@ class FuseDualRadar:
 
     def run(self):
         """
-        Main loop - collect frames from both radars, fuse tracks, and Send to Visualizer Queue
+        Main loop - collect frames from both radars, fuse tracks, and send to Visualizer Queue
         """
         self._log('Starting visualization loop...')
         
@@ -52,93 +51,77 @@ class FuseDualRadar:
             try:
                 # Collect frames from all radars
                 for i, queue in enumerate(self.radar_rd_queue_list):
+                    radar_name = self.radar_cfg_list[i]['name']
                     if not queue.empty():
                         frame = queue.get(block=False)
                         radar_name = frame['radar_name']
                         radar_frames_buffer[radar_name] = frame
-                
+                        
+                        print(f"[DEBUG] Received frame from {radar_name} (queue {i}), "
+                            f"num_tracks={frame.get('num_tracks', 'N/A')}, "
+                            f"tracks={len(frame.get('tracks', []))}")
+                        print(radar_frames_buffer[radar_name])
+                    # else:
+                    #     print(f"[DEBUG] Queue {i} ({radar_name}) is empty this cycle.")
+
                 # Check if it's time to process and output
                 current_time = time.time()
                 if current_time - last_output_time >= output_period:
+                    print("\n[DEBUG] ================= Frame Fusion Cycle Start =================")
+                    
                     # Get all available frames
                     available_frames = [f for f in radar_frames_buffer.values() if f is not None]
-                    
+                    print(f"Available frames: {len(available_frames)}")
+
                     if available_frames:
-                        # Fuse tracks from all radars
+                        radar_names = [f['radar_name'] for f in available_frames]
+                        print(f"[DEBUG] Fusing tracks from: {radar_names}")
+
+                        # Fuse tracks from all radars                        
                         fused_tracks = self.track_fusion.fuse_tracks(available_frames)
                         
+                        # Detailed track-level debug info
+                        for t_i, track in enumerate(fused_tracks):
+                            print(f"  [Track {t_i}] GlobalTID={track['global_tid']}, "
+                                f"Pos=({track['posX']:.2f}, {track['posY']:.2f}, {track['posZ']:.2f}), "
+                                f"Conf={track['confidence']:.2f}, "
+                                f"Sources={track['source_radars']}, "
+                                f"num_radars_detected={track['num_radars_detected']}")
+                        
+                        # Send fused tracks to visualizer
                         if fused_tracks:
-                            # Output to Industrial Visualizer
                             self._output_to_industrial_vis(fused_tracks)
-                            
                             self.vis_queue.put(fused_tracks)
 
-                            # Print statistics
+                            # Statistics update
                             self.total_tracks_processed += len(fused_tracks)
                             self.frame_count += 1
                             
                             if self.frame_count % 100 == 0:
-                                self._log(f'Frames: {self.frame_count}, '
-                                         f'Tracks: {len(fused_tracks)}, '
-                                         f'Total: {self.total_tracks_processed}')
+                                self._log(f'[STATS] Frames={self.frame_count}, '
+                                        f'Tracks={len(fused_tracks)}, '
+                                        f'TotalTracksProcessed={self.total_tracks_processed}')
                         
-                        # Clear buffer (ready for next sync point)
+                        # Uncomment below if you want to reset frame buffer after each fusion cycle
                         # radar_frames_buffer = {cfg['name']: None for cfg in self.radar_cfg_list}
                     
+                    else:
+                        print("[DEBUG] No frames available for fusion this cycle.")
+
                     last_output_time = current_time
                 
-                # Small delay to prevent CPU spinning
                 time.sleep(0.001)
-                
+            
             except Exception as e:
-                self._log(f'Error in main loop: {e}')
+                self._log(f'[ERROR] Exception in main loop: {e}')
+                print(f"[DEBUG] Exception details: {e}")
                 time.sleep(0.01)
 
     def _output_to_industrial_vis(self, fused_tracks):
         """
-        Send fused tracks to Industrial Visualizer via socket
+        Print fused tracks to Terminal
         Format: TLV structure compatible with Industrial Visualizer
         """
-        # if not self.socket_conn:
-        #     return
-        
-        # try:
-        #     # Build TLV packet for Industrial Visualizer
-        #     # Header: magic word + version + length + frame_num + num_tlvs
-        #     MAGIC_WORD = b'\x02\x01\x04\x03\x06\x05\x08\x07'
-            
-        #     # Build TLV 1010 data (3D Target List)
-        #     tlv_data = self._build_tlv_1010(fused_tracks)
-            
-        #     # TLV header: type (4 bytes) + length (4 bytes)
-        #     tlv_type = struct.pack('I', 1010)
-        #     tlv_length = struct.pack('I', len(tlv_data))
-            
-        #     # Frame header (40 bytes total)
-        #     version = struct.pack('I', 0xA1642333)  # SDK version
-        #     total_packet_len = struct.pack('I', 40 + 8 + len(tlv_data))  # header + tlv_header + data
-        #     platform = struct.pack('I', 0xA1843)  # IWR6843
-        #     frame_number = struct.pack('I', self.frame_count)
-        #     time_cpu = struct.pack('I', int(time.time() * 1000))
-        #     num_detected = struct.pack('I', len(fused_tracks))
-        #     num_tlvs = struct.pack('I', 1)  # Only TLV 1010
-        #     subframe = struct.pack('I', 0)
-            
-        #     # Assemble packet
-        #     packet = (MAGIC_WORD + version + total_packet_len + platform + 
-        #              frame_number + time_cpu + num_detected + num_tlvs + subframe +
-        #              tlv_type + tlv_length + tlv_data)
-            
-        #     # Send via socket
-        #     if self.ind_vis_cfg.get('output_protocol', 'udp') == 'udp':
-        #         self.socket_conn.sendto(packet, self.socket_address)
-        #     else:
-        #         self.socket_conn.send(packet)
-            
-        # except Exception as e:
-        #     self._log(f'Output error: {e}')
-
-        # Clear screen for clean output (optional)
         import os
         os.system('cls' if os.name == 'nt' else 'clear')
         
@@ -223,8 +206,8 @@ if __name__ == '__main__':
     run_flag = Manager().Value('b', True)
     queue1 = Manager().Queue()
     queue2 = Manager().Queue()
+    vis_queue = Manager().Queue()
     shared_dict = {'proc_status_dict': Manager().dict()}
-    
     # Test config
     kwargs_CFG = {
         'VISUALIZER_CFG': {
@@ -239,17 +222,10 @@ if __name__ == '__main__':
         ],
         'TRACK_FUSION_CFG': {
             'distance_threshold': 0.5
-        },
-        'INDUSTRIAL_VIS_CFG': {
-            'enable': True,
-            'output_protocol': 'udp',
-            'ip_address': '127.0.0.1',
-            'port': 5000
         }
     }
     
-    # vis = Visualizer(run_flag, [queue1, queue2], shared_dict, **kwargs_CFG)
-    
+    vis = FuseDualRadar(run_flag, [queue1, queue2], vis_queue, shared_dict, **kwargs_CFG)
     # Simulate some test data
     test_frame1 = {
         'radar_name': 'Radar1',
@@ -259,11 +235,26 @@ if __name__ == '__main__':
             {'tid': 1, 'posX': 1.0, 'posY': 2.0, 'posZ': 1.5,
              'velX': 0.1, 'velY': 0.2, 'velZ': 0.0,
              'accX': 0.0, 'accY': 0.0, 'accZ': 0.0,
-             'confidence': 0.9, 'gating_gain': 1.0}
+             'confidence': 0.9, 'gating_gain': 1.0},
+            {'tid': 10, 'posX': 4.0, 'posY': 5.0, 'posZ': 6.5,
+             'velX': 10, 'velY': 4.2, 'velZ': 5.0,
+             'accX': 0.0, 'accY': 0.0, 'accZ': 0.0,
+             'confidence': 0.6, 'gating_gain': 1.0}
         ]
     }
-    
-    queue1.put(test_frame1)
+    test_frame2 = {
+        'radar_name': 'Radar2',
+        'timestamp': time.time(),
+        'num_tracks': 1,
+        'tracks': [
+            {'tid': 2, 'posX': 1.2, 'posY': 2.3, 'posZ': 1.7,
+            'velX': 0.2, 'velY': 0.27, 'velZ': 0.0,
+            'accX': 0.0, 'accY': 0.0, 'accZ': 0.0,
+            'confidence': 0.8, 'gating_gain': 1.0}
+    ]
+}
+    queue1.put(test_frame1) #From Radar1
+    queue2.put(test_frame2) #From Radar2
     
     print("Visualizer test - press Ctrl+C to stop")
     try:
